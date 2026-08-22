@@ -1,0 +1,63 @@
+name: GitHub Actions Debug Info
+
+on:
+
+  workflow_dispatch:
+
+  workflow_run:
+
+    workflows: ["CI"]
+
+    types:
+
+      - completed
+
+jobs:
+
+  info:
+
+    runs-on: ubuntu-latest
+
+    steps:
+
+      - name: Output Debug Info
+
+        run: |
+
+          echo "GitHub Actions debug info"
+
+          echo "Working directory: $(pwd)"
+
+          echo "Date:"
+
+          date
+
+          echo ""
+
+          echo "Git:"
+
+          git --version
+
+          echo ""
+
+          echo "Node.js:"
+
+          node --version
+
+          echo ""
+
+          echo "npm:"
+
+          npm --version
+
+          echo ""
+
+          echo "Python:"
+
+          python --version
+
+          echo ""
+
+          echo "GitHub CLI:"
+
+          gh --version
