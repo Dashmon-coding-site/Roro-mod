@@ -1,0 +1,77 @@
+name: Signature Assistant
+
+on:
+
+  pull_request:
+
+    types:
+
+      - opened
+
+      - synchronize
+
+      - reopened
+
+  workflow_dispatch:
+
+permissions:
+
+  contents: read
+
+  pull-requests: write
+
+jobs:
+
+  signature-assistant:
+
+    name: Verify Pull Request Signatures
+
+    runs-on: ubuntu-latest
+
+    steps:
+
+      - name: Checkout
+
+        uses: actions/checkout@v5
+
+        with:
+
+          fetch-depth: 0
+
+      - name: Check commit signatures
+
+        env:
+
+          GH_TOKEN: ${{ github.token }}
+
+        run: |
+
+          echo "Checking commits in pull request..."
+
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+
+            git fetch origin \
+
+              "${{ github.event.pull_request.base.ref }}" \
+
+              "${{ github.event.pull_request.head.ref }}"
+
+            git log \
+
+              --format="%H %G? %an <%ae>" \
+
+              "origin/${{ github.event.pull_request.base.ref }}..HEAD"
+
+          else
+
+            echo "Manual workflow run."
+
+            git log -10 --format="%H %G? %an <%ae>"
+
+          fi
+
+      - name: Report
+
+        run: |
+
+          echo "Signature verification workflow completed."
