@@ -1,0 +1,47 @@
+name: Commitlint
+
+on:
+
+  pull_request:
+
+  push:
+
+    branches:
+
+      - main
+
+jobs:
+
+  commitlint:
+
+    name: Validate commits
+
+    runs-on: ubuntu-latest
+
+    steps:
+
+      - name: Checkout
+
+        uses: actions/checkout@v5
+
+        with:
+
+          fetch-depth: 0
+
+      - name: Setup Node.js
+
+        uses: actions/setup-node@v6
+
+        with:
+
+          node-version-file: ".nvmrc"
+
+          cache: npm
+
+      - name: Install dependencies
+
+        run: npm ci
+
+      - name: Check commits
+
+        run: npx commitlint --from="${{ github.event.repository.default_branch }}" --to="${{ github.sha }}" --verbose
