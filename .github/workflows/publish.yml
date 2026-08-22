@@ -1,0 +1,593 @@
+on:
+
+  workflow_dispatch:
+
+    inputs:
+
+      prerelease:
+
+        description: "Publish as a prerelease"
+
+        required: false
+
+        default: false
+
+        type: boolean
+
+      npm_publish:
+
+        description: "Publish the package to npm"
+
+        required: false
+
+        default: false
+
+        type: boolean
+
+permissions:
+
+  contents: write
+
+concurrency:
+
+  group: publish
+
+  cancel-in-progress: false
+
+env:
+
+  NODE_VERSION_FILE: ".nvmrc"
+
+jobs:
+
+  release-prep:
+
+    name: Prepare Release
+
+    runs-on: ubuntu-latest
+
+    outputs:
+
+      version: ${{ steps.version.outputs.version }}
+
+      tag: ${{ steps.version.outputs.tag }}
+
+      npm_tag: ${{ steps.version.outputs.npm_tag }}
+
+      prerelease: ${{ steps.version.outputs.prerelease }}
+
+    steps:
+
+      - name: Checkout
+
+        uses: actions/checkout@v5
+
+        with:
+
+          fetch-depth: 0
+
+      - name: Setup Node.js
+
+        uses: actions/setup-node@v6
+
+        with:
+
+          node-version-file: .nvmrc
+
+          cache: npm
+
+      - name: Install dependencies
+
+        run: npm ci
+
+      - name: Determine version
+
+        id: version
+
+        shell: bash
+
+        run: |
+
+          VERSION="$(node -p "require('./package.json').version")"
+
+          if [ -z "$VERSION" ]; then
+
+            echo "::error::package.json does not contain a version."
+
+            exit 1
+
+          fi
+
+          PRERELEASE="${{ inputs.prerelease }}"
+
+          if [ "$PRERELEASE" = "true" ]; then
+
+            TAG="v${VERSION}-preview.${GITHUB_RUN_NUMBER}"
+
+            NPM_TAG="next"
+
+          else
+
+            TAG="v${VERSION}"
+
+            NPM_TAG="latest"
+
+          fi
+
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+
+          echo "npm_tag=$NPM_TAG" >> "$GITHUB_OUTPUT"
+
+          echo "prerelease=$PRERELEASE" >> "$GITHUB_OUTPUT"
+
+      - name: Show release information
+
+        run: |
+
+          echo "Version: ${{ steps.version.outputs.version }}"
+
+          echo "Tag: ${{ steps.version.outputs.tag }}"
+
+          echo "npm tag: ${{ steps.version.outputs.npm_tag }}"
+
+          echo "Prerelease: ${{ steps.version.outputs.prerelease }}"
+
+  build:
+
+    name: Build
+
+    needs: release-prep
+
+    runs-on: ubuntu-latest
+
+    outputs:
+
+      artifact: scratch-mod-build
+
+    steps:
+
+      - name: Checkout
+
+        uses: actions/checkout@v5
+
+      - name: Setup Node.js
+
+        uses: actions/setup-node@v6
+
+        with:
+
+          node-version-file: .nvmrc
+
+          cache: npm
+
+      - name: Install dependencies
+
+        run: npm ci
+
+      - name: Build
+
+        run: npm run build
+
+      - name: Check build output
+
+        shell: bash
+
+        run: |
+
+          if [ ! -d "build" ]; then
+
+            echo "::error::The build directory was not created."
+
+            exit 1
+
+          fi
+
+      - name: Upload build
+
+        uses: actions/upload-artifact@v5
+
+        with:
+
+          name: scratch-mod-build
+
+          path: build/
+
+          retention-days: 90
+
+  test:
+
+    name: Test
+
+    needs:
+
+      - release-prep
+
+      - build
+
+    runs-on: ubuntu-latest
+
+    steps:
+
+      - name: Checkout
+
+        uses: actions/checkout@v5
+
+      - name: Setup Node.js
+
+        uses: actions/setup-node@v6
+
+        with:
+
+          node-version-file: .nvmrc
+
+          cache: npm
+
+      - name: Install dependencies
+
+        run: npm ci
+
+      - name: Run tests
+
+        run: npm test
+
+  lint:
+
+    name: Lint
+
+    needs: release-prep
+
+    runs-on: ubuntu-latest
+
+    steps:
+
+      - name: Checkout
+
+        uses: actions/checkout@v5
+
+      - name: Setup Node.js
+
+        uses: actions/setup-node@v6
+
+        with:
+
+          node-version-file: .nvmrc
+
+          cache: npm
+
+      - name: Install dependencies
+
+        run: npm ci
+
+      - name: Run lint
+
+        run: npm run lint
+
+  package:
+
+    name: Package Release
+
+    needs:
+
+      - release-prep
+
+      - build
+
+      - test
+
+      - lint
+
+    runs-on: ubuntu-latest
+
+    outputs:
+
+      archive: scratch-mod-${{ needs.release-prep.outputs.version }}.tar.gz
+
+    steps:
+
+      - name: Checkout
+
+        uses: actions/checkout@v5
+
+      - name: Download build
+
+        uses: actions/download-artifact@v6
+
+        with:
+
+          name: scratch-mod-build
+
+          path: build
+
+      - name: Prepare release directory
+
+        shell: bash
+
+        run: |
+
+          mkdir -p release/scratch-mod
+
+          cp -r build release/scratch-mod/build
+
+          cp package.json release/scratch-mod/package.json
+
+          cp package-lock.json release/scratch-mod/package-lock.json
+
+          cp README.md release/scratch-mod/README.md
+
+          cp LICENSE release/scratch-mod/LICENSE
+
+      - name: Create archive
+
+        run: |
+
+          tar -czf \
+
+            "scratch-mod-${{ needs.release-prep.outputs.version }}.tar.gz" \
+
+            -C release \
+
+            scratch-mod
+
+      - name: Upload release archive
+
+        uses: actions/upload-artifact@v5
+
+        with:
+
+          name: scratch-mod-release
+
+          path: scratch-mod-${{ needs.release-prep.outputs.version }}.tar.gz
+
+          retention-days: 90
+
+  npm-publish:
+
+    name: Publish to npm
+
+    needs:
+
+      - release-prep
+
+      - build
+
+      - test
+
+      - lint
+
+      - package
+
+    if: ${{ inputs.npm_publish == true }}
+
+    runs-on: ubuntu-latest
+
+    permissions:
+
+      contents: read
+
+    env:
+
+      NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+      NPM_TAG: ${{ needs.release-prep.outputs.npm_tag }}
+
+    steps:
+
+      - name: Checkout
+
+        uses: actions/checkout@v5
+
+      - name: Setup Node.js
+
+        uses: actions/setup-node@v6
+
+        with:
+
+          node-version-file: .nvmrc
+
+          cache: npm
+
+          registry-url: https://registry.npmjs.org
+
+      - name: Check npm token
+
+        shell: bash
+
+        run: |
+
+          if [ -z "$NODE_AUTH_TOKEN" ]; then
+
+            echo "::error::NPM_TOKEN is required when npm publishing is enabled."
+
+            exit 1
+
+          fi
+
+      - name: Install dependencies
+
+        run: npm ci
+
+      - name: Verify package
+
+        run: npm pack --dry-run
+
+      - name: Publish package
+
+        run: npm publish --tag "$NPM_TAG"
+
+  github-release:
+
+    name: Create GitHub Release
+
+    needs:
+
+      - release-prep
+
+      - build
+
+      - test
+
+      - lint
+
+      - package
+
+    runs-on: ubuntu-latest
+
+    steps:
+
+      - name: Checkout
+
+        uses: actions/checkout@v5
+
+        with:
+
+          fetch-depth: 0
+
+      - name: Download release archive
+
+        uses: actions/download-artifact@v6
+
+        with:
+
+          name: scratch-mod-release
+
+          path: release
+
+      - name: Create tag
+
+        shell: bash
+
+        run: |
+
+          TAG="${{ needs.release-prep.outputs.tag }}"
+
+          if git rev-parse "$TAG" >/dev/null 2>&1; then
+
+            echo "Tag $TAG already exists."
+
+          else
+
+            git config user.name "github-actions[bot]"
+
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+            git tag -a "$TAG" \
+
+              -m "Release ${{ needs.release-prep.outputs.version }}"
+
+            git push origin "$TAG"
+
+          fi
+
+      - name: Create GitHub release
+
+        env:
+
+          GH_TOKEN: ${{ github.token }}
+
+        run: |
+
+          PRERELEASE_FLAG=""
+
+          if [ "${{ needs.release-prep.outputs.prerelease }}" = "true" ]; then
+
+            PRERELEASE_FLAG="--prerelease"
+
+          fi
+
+          gh release create \
+
+            "${{ needs.release-prep.outputs.tag }}" \
+
+            release/scratch-mod-${{ needs.release-prep.outputs.version }}.tar.gz \
+
+            --title "Scratch Mod ${{ needs.release-prep.outputs.version }}" \
+
+            --generate-notes \
+
+            $PRERELEASE_FLAG
+
+  finalize:
+
+    name: Finalize Release
+
+    needs:
+
+      - release-prep
+
+      - build
+
+      - test
+
+      - lint
+
+      - package
+
+      - npm-publish
+
+      - github-release
+
+    if: always()
+
+    runs-on: ubuntu-latest
+
+    steps:
+
+      - name: Check release status
+
+        shell: bash
+
+        run: |
+
+          echo "Release: ${{ needs.release-prep.result }}"
+
+          echo "Build: ${{ needs.build.result }}"
+
+          echo "Tests: ${{ needs.test.result }}"
+
+          echo "Lint: ${{ needs.lint.result }}"
+
+          echo "Package: ${{ needs.package.result }}"
+
+          echo "npm publish: ${{ needs.npm-publish.result }}"
+
+          echo "GitHub release: ${{ needs.github-release.result }}"
+
+          if [ "${{ needs.release-prep.result }}" != "success" ]; then
+
+            exit 1
+
+          fi
+
+          if [ "${{ needs.build.result }}" != "success" ]; then
+
+            exit 1
+
+          fi
+
+          if [ "${{ needs.test.result }}" != "success" ]; then
+
+            exit 1
+
+          fi
+
+          if [ "${{ needs.lint.result }}" != "success" ]; then
+
+            exit 1
+
+          fi
+
+          if [ "${{ needs.package.result }}" != "success" ]; then
+
+            exit 1
+
+          fi
+
+          if [ "${{ needs.github-release.result }}" != "success" ]; then
+
+            exit 1
+
+          fi
+
+          echo "Release completed successfully."
