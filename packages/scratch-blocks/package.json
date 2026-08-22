@@ -1,0 +1,71 @@
+{
+
+  "name": "scratch-blocks",
+
+  "version": "1.0.0",
+
+  "description": "Scratch-style visual programming blocks for the Scratch Mod.",
+
+  "license": "Apache-2.0",
+
+  "private": true,
+
+  "main": "./dist/main.mjs",
+
+  "types": "./dist/types/src/index.d.ts",
+
+  "scripts": {
+
+    "build": "webpack --mode production",
+
+    "format": "prettier --write . && eslint --fix",
+
+    "start": "webpack serve --open --mode development",
+
+    "test": "vitest run",
+
+    "test:lint": "eslint && prettier --check .",
+
+    "test:unit": "vitest run --project unit",
+
+    "test:watch": "vitest"
+
+  },
+
+  "dependencies": {
+
+    "@blockly/continuous-toolbox": "^7.0.8",
+
+    "@blockly/field-colour": "^6.0.11",
+
+    "blockly": "^12.4.1"
+
+  },
+
+  "devDependencies": {
+
+    "@commitlint/cli": "^20.5.3",
+
+    "@commitlint/config-conventional": "^20.5.3",
+
+    "eslint": "^9.39.5",
+
+    "prettier": "^3.8.5",
+
+    "source-map-loader": "^5.0.0",
+
+    "ts-loader": "^9.6.2",
+
+    "typescript": "^5.9.3",
+
+    "vitest": "^4.1.10",
+
+    "webpack": "^5.109.2",
+
+    "webpack-cli": "^6.0.1",
+
+    "webpack-dev-server": "^5.2.6"
+
+  }
+
+}
