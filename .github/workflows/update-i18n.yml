@@ -1,0 +1,57 @@
+name: Update i18n
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "0 0 * * 1"
+permissions:
+  contents: write
+  pull-requests: write
+concurrency:
+  group: update-i18n
+  cancel-in-progress: false
+jobs:
+  update-i18n:
+    name: Update Internationalization
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - name: Install dependencies
+        run: npm ci
+      - name: Update translations
+        run: |
+          if npm run update-i18n --if-present; then
+            echo "Internationalization update completed."
+          else
+            echo "No update-i18n script is configured."
+          fi
+      - name: Check for changes
+        id: changes
+        shell: bash
+        run: |
+          if git diff --quiet; then
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+          fi
+      - name: Configure Git
+        if: steps.changes.outputs.changed == 'true'
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+      - name: Commit translation updates
+        if: steps.changes.outputs.changed == 'true'
+        run: |
+          git add .
+          git commit -m "chore: update translations"
+      - name: Push changes
+        if: steps.changes.outputs.changed == 'true'
+        run: |
+          git push
